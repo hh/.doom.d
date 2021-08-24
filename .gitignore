@@ -4,3 +4,6 @@
 tmp/
 users/*.el
 config.el
+packages.el
+init.el
+local/ore
