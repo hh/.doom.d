@@ -1084,3 +1084,7 @@ Let's make the graph more polished
 (use-package! ore
   :after org)
 #+END_SRC
+
+#+BEGIN_SRC elisp
+(display-time-mode 1)
+#+END_SRC
