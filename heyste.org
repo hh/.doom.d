@@ -753,7 +753,7 @@ zen                 ; distraction-free coding or writing
 (evil +everywhere)  ; come to the dark side, we have cookies
 file-templates      ; auto-snippets for empty files
 fold                ; (nigh) universal code folding
-(format +onsave)    ; automated prettiness
+;; (format +onsave)    ; automated prettiness
 ;;god               ; run Emacs commands without modifier keys
 ;;lispy             ; vim for lisp, for people who don't like vim
 multiple-cursors    ; editing in many places at once
@@ -932,7 +932,7 @@ irc                 ; how neckbeards socialize
 #+begin_src elisp
 (setq org-directory (concat (getenv "HOME") "/ii/roam"))
 (setq org-roam-directory (concat (getenv "HOME") "/ii/roam/"))
-(setq org-roam-db-location "/tmp/org-roam.db")
+(setq org-roam-db-location (concat (getenv "HOME") "/ii/.roam/org-roam.db"))
 (setq org-roam-buffer-width 0.2)
 #+end_src
 
@@ -1011,11 +1011,14 @@ Let's make the graph more polished
 ** Capture Templates
 
 #+begin_src elisp
-(setq template-message (concat "#+filetags: 2021w34\n"
+(setq template-message (concat "#+filetags: 2021w41\n"
                                "#+startup: overview\n\n\n"
                                "* Tasks [/]\n"
+                               "- [ ] Current queue\n"
+                               "- [ ] Pairbox:\n"
                                "- [ ] Capture Next AI!\n"
                                "* Links\n"
+                               "* Research\n"
                                "* Capture\n\n"))
 
 (setq org-roam-capture-templates
@@ -1073,6 +1076,22 @@ Let's make the graph more polished
   (prettify-symbols-mode)))
 #+END_SRC
 
+* Org-re-reveal
+
+#+begin_src elisp :tangle packages.el
+(package! org-re-reveal
+  :recipe (:host gitlab
+           :repo "oer/org-re-reveal"
+           :branch "master"))
+
+#+end_src
+
+#+BEGIN_SRC elisp
+(use-package! org-re-reveal
+  :after org)
+#+END_SRC
+
+* Develop ORE Package
 
 #+BEGIN_SRC elisp :tangle packages.el
 (package! ore
