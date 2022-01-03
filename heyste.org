@@ -1011,12 +1011,12 @@ Let's make the graph more polished
 ** Capture Templates
 
 #+begin_src elisp
-(setq template-message (concat "#+filetags: 2021w41\n"
+(setq template-message (concat "#+filetags: 2022w01\n"
                                "#+startup: overview\n\n\n"
                                "* Tasks [/]\n"
-                               "- [ ] Current queue\n"
                                "- [ ] Pairbox:\n"
-                               "- [ ] Capture Next AI!\n"
+                               "- [ ] Capture AIs\n"
+                               "* Timeline\n"
                                "* Links\n"
                                "* Research\n"
                                "* Capture\n\n"))
