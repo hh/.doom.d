@@ -1011,7 +1011,7 @@ Let's make the graph more polished
 ** Capture Templates
 
 #+begin_src elisp
-(setq template-message (concat "#+filetags: 2022w01\n"
+(setq template-message (concat "#+filetags: 2022w05\n"
                                "#+startup: overview\n\n\n"
                                "* Tasks [/]\n"
                                "- [ ] Pairbox:\n"
@@ -1107,3 +1107,9 @@ Let's make the graph more polished
 #+BEGIN_SRC elisp
 (display-time-mode 1)
 #+END_SRC
+
+* Kubernetes
+
+#+begin_src elisp :tangle packages.el
+(package! kubernetes)
+#+end_src
