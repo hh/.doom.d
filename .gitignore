@@ -6,4 +6,5 @@ users/*.el
 config.el
 packages.el
 init.el
+custom.el
 local/ore
