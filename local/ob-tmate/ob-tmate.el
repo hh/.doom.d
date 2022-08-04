@@ -2,14 +2,15 @@
 
 ;; Copyright (C) 2009-2017 Free Software Foundation, Inc.
 ;; Copyright (C) 2017 Allard Hendriksen
+;; Copyright (C) 2022 Hippie Hacker
 
-;; Author: Allard Hendriksen
+;; Author: Hippie Hacker
 ;; Keywords: literate programming, interactive shell, tmate
-;; URL: https://github.com/ahendriksen/ob-tmate
-;; Version: 0.1.5
-;; Package-Version: 20200206.109
-;; Package-X-Original-version: 0.1.5
-;; Package-Requires: ((emacs "25.1") (seq "2.3") (s "1.9.0"))
+;; URL: https://github.com/hh/ob-tmate
+;; Version: 0.0.1
+;; Package-Version: 20220727.109
+;; Package-X-Original-version: 0.0.1
+;; Package-Requires: ((emacs "27.1") (seq "2.3") (s "1.9.0"))
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -31,9 +32,7 @@
 ;; Org-Babel support for tmate.
 ;;
 ;; Heavily inspired by 'eev' from Eduardo Ochs and ob-screen.el from
-;; Benjamin Andresen.
-;;
-;; See documentation on https://github.com/ahendriksen/ob-tmate
+;; Benjamin Andresen and ob-tmate from https://github.com/ahendriksen/ob-tmate
 ;;
 ;; You can test the default setup with
 ;; M-x org-babel-tmate-test RET
@@ -41,8 +40,8 @@
 ;;; Code:
 (require 'ob)
 (require 'seq)
-(require 'osc52e)
-(require 'iterm)
+;;(require 'osc52e)
+;;(require 'iterm)
 (require 's)
 
 (defcustom org-babel-tmate-location "tmate"
@@ -58,6 +57,16 @@ Change in case you want to use a different tmate than the one in your $PATH."
 (defcustom org-babel-tmate-kitty-socket (default-org-babel-tmate-kitty-socket)
   "The command location for tmate.
 Change in case you want to use a different tmate than the one in your $PATH."
+  :group 'org-babel
+  :type 'string)
+
+(defcustom org-babel-tmate-window-delay "1"
+  "The number of seconds to wait before sending keys to a new tmate window."
+  :group 'org-babel
+  :type 'string)
+
+(defcustom org-babel-tmate-split-args "-v -p 50"
+  "v for verticle or h for horizontal split"
   :group 'org-babel
   :type 'string)
 
@@ -92,11 +101,16 @@ Uses kitty if found, otherwise iterm on OSX"
   :group 'org-babel
   :type 'list)
 
+(defcustom org-babel-tmate-split-opts '("--")
+  "The list of options that will be passed to the splits."
+  :group 'org-babel
+  :type 'list)
 
 (defvar org-babel-default-header-args:tmate
   `((:results . "silent")
     (:session . "tmate")
     (:window . "i")
+    (:pane . 0)
     (:dir . ".")
     (:socket .
              ;; if emacs is run within tmux/tmate
@@ -151,11 +165,15 @@ Argument PARAMS the org parameters of the code block."
               (ob-tmate--tmate-socket session)))
            (dir (cdr (assq :dir params)))
            (window (cdr (assq :window params)))
+           (pane (cdr (assq :pane params)))
            (ob-session (ob-tmate--create
                         :session session :window window :socket socket))
            (on-remote-p (stringp (getenv "SSH_CONNECTION")))
            (session-alive (ob-tmate--session-alive-p ob-session))
-           (window-alive (ob-tmate--window-alive-p ob-session)))
+           (window-alive (ob-tmate--window-alive-p ob-session))
+           (previous-pane-alive (ob-tmate--previous-pane-alive-p ob-session))
+           (pane-alive (ob-tmate--pane-alive-p ob-session))
+           )
       (message "OB-TMATE: Checking for session: %S" session-alive)
       (unless session-alive
         (progn
@@ -172,9 +190,15 @@ Argument PARAMS the org parameters of the code block."
           (if (y-or-n-p "Open browser for url?")
               (browse-url (ob-tmate--web-url ob-session))))))
       (message "OB-TMATE: Checking for window: %S" window-alive)
-      (unless window-alive
+      (unless (and (= pane 0) window-alive)
           (message "OB-TMATE: create-window")
         (ob-tmate--create-window ob-session dir))
+      (unless (and (> pane 0) previous-pane-alive)
+        (message "OB-TMATE: previous-pane does not exist! Unable to create.")
+        (cl-return nil))
+      (unless pane-alive
+        (message "OB-TMATE: creating pane")
+        (ob-tmate--create-pane ob-session dir))
         ;; (while (not (ob-tmate--window-alive-p ob-session)))
       ;; Wait until tmate window is available
       ;; Disable window renaming from within tmate
@@ -189,7 +213,9 @@ Argument PARAMS the org parameters of the code block."
 			(:copier ob-tmate--copy))
   session
   window
-  socket)
+  socket
+  pane
+  )
 
 (defun ob-tmate--tmate-session (org-session)
   "Extract tmate session from ORG-SESSION string."
@@ -205,10 +231,10 @@ Argument PARAMS the org parameters of the code block."
   (let* ((session-name (car (split-string org-session ":"))))
     (concat temporary-file-directory user-login-name "." session-name ".tmate" )))
 
-(defun ob-tmate--from-session-window-socket (session window socket)
+(defun ob-tmate--from-session-window-pane-socket (session window socket)
   "Create a new ob-tmate-session object from ORG-SESSION specification.
 Required argument SOCKET: the location of the tmate socket."
-  (ob-tmate--create :session session :window window :socket socket))
+  (ob-tmate--create :session session :window window :pane pane :socket socket))
 
 (defun ob-tmate--window-default (ob-session)
   "Extracts the tmate window from the ob-tmate- object.
@@ -448,7 +474,28 @@ Argument OB-SESSION: the current ob-tmate session."
      "new-window"
      "-c" (expand-file-name session-dir)
      ;; "-c" (expand-file-name "~") ;; start in home directory
-     "-n" (ob-tmate--window-default ob-session))))
+     "-n" (ob-tmate--window-default ob-session))
+    ;; sometimes we send keys too quickly... before the shell is ready
+    ;; TODO: maybe wait to send until we see a shell prompt?
+    (sleep-for (string-to-number org-babel-tmate-window-delay))
+    ))
+
+(defun ob-tmate--create-pane (ob-session session-dir)
+  "Create a tmate window.pane in session if it does not yet exist.
+
+Argument OB-SESSION: the current ob-tmate session."
+  (unless (ob-tmate--window-alive-p ob-session)
+    (message "tmate execute session")
+    (ob-tmate--execute ob-session
+     ;; "-S" (ob-tmate--socket ob-session)
+     "split-window"
+     "-c" (expand-file-name session-dir)
+     ;; "-c" (expand-file-name "~") ;; start in home directory
+     "-t" (ob-tmate--window-default ob-session))
+    ;; sometimes we send keys too quickly... before the shell is ready
+    ;; TODO: maybe wait to send until we see a shell prompt?
+    (sleep-for (string-to-number org-babel-tmate-window-delay))
+    ))
 
 (defun ob-tmate--set-window-option (ob-session option value)
   "If window exists, set OPTION for window.
@@ -544,13 +591,45 @@ If no window is specified in OB-SESSION, returns 't."
          (window (ob-tmate--window-default ob-session))
 	       (target (ob-tmate--target ob-session))
          ;; This appears to hang if we let it run early
-	       (output (ob-tmate--execute-string ob-session
+	       (list-windows-output (ob-tmate--execute-string ob-session
 		                                       "list-windows"
 		                                       "-F '#W'"
                                            )))
     ;; (y-or-n-p (concat "Is {" target "} alive?"))
-    (string-match-p (concat window "\n") output)))
+    (string-match-p (concat window "\n") list-windows-output)))
 
+(defun ob-tmate--pane-alive-p (ob-session pane)
+  "Check if WINDOWPANE exists in tmate session.
+
+If no windowpane is specified in OB-SESSION, returns 't."
+  (let* (
+         (pane (ob-tmate--pane-default ob-session))
+	       (target (ob-tmate--target ob-session))
+         ;; This appears to hang if we let it run early
+	       (list-panes-output (ob-tmate--execute-string ob-session
+		                                       "list-panes"
+		                                       "-F '#P'"
+                                           )))
+    ;; (y-or-n-p (concat "Is {" target "} alive?"))
+    (string-match-p (concat window "\n") list-panes-output)))
+
+(defun ob-tmate--previous-pane-alive-p (ob-session)
+  "Check if WINDOWPANE exists in tmate session.
+
+If no windowpane is specified in OB-SESSION, returns 't."
+  (let* (
+         (pane (ob-tmate--pane-default ob-session))
+         (previous-pane (number-to-string (- pane 1)))
+	 (target (ob-tmate--target ob-session))
+         ;; This appears to hang if we let it run early
+	 (list-panes-output (ob-tmate--execute-string ob-session
+		                                       "list-panes"
+		                                       "-F '#P'"
+                                           )))
+    ;; (y-or-n-p (concat "Is {" target "} alive?"))
+    (or (= "0" pane) ;; if pane is zero... there is no previous pane
+        (string-match-p (concat previous-pane "\n") list-panes-output))
+        ))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Test functions
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
